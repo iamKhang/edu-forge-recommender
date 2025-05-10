@@ -7,7 +7,10 @@ import numpy as np
 from .models import Post, User, UserPostInteraction
 from .serializers import PostSerializer, UserSerializer, UserPostInteractionSerializer
 from .recommendation_engine import RecommendationEngine
+import requests
 import os
+import traceback
+import json
 
 # Create your views here.
 
@@ -23,52 +26,44 @@ class UserPostInteractionViewSet(viewsets.ModelViewSet):
     queryset = UserPostInteraction.objects.all()
     serializer_class = UserPostInteractionSerializer
 
-    @action(detail=False, methods=['get'])
-    def get_recommendations(self, request):
-        user_id = request.query_params.get('user_id')
-        if not user_id:
-            return Response({'error': 'user_id is required'}, status=400)
-
-        # Initialize recommendation engine
-        engine = RecommendationEngine()
-        
-        # Try to load existing model
-        if not engine.load_model():
-            # If model doesn't exist, train it
-            engine.train()
-        
-        # Get user profile and recommendations
-        user_profile = engine.get_user_profile(user_id)
-        if not user_profile:
-            return Response({'error': 'User not found or model not trained'}, status=404)
-            
-        return Response(user_profile)
-
-    @action(detail=False, methods=['get'])
-    def get_all_recommendations(self, request):
-        # Initialize recommendation engine
-        engine = RecommendationEngine()
-        
-        # Try to load existing model
-        if not engine.load_model():
-            # If model doesn't exist, train it
-            engine.train()
-        
-        # Get recommendations for all users
-        all_recommendations = engine.get_all_recommendations()
-        if not all_recommendations:
-            return Response({'error': 'No recommendations available'}, status=404)
-            
-        return Response(all_recommendations)
-
-    @action(detail=False, methods=['post'])
-    def retrain_model(self, request):
-        """Retrain the recommendation model"""
+    @action(detail=False, methods=['get', 'post'])
+    def train_and_recommend(self, request):
+        """Train model and get recommendations for all users"""
         try:
+            # Initialize recommendation engine
             engine = RecommendationEngine()
+            
+            # Check if the external API is available
+            try:
+                # Test the API connection first with a timeout of 2 seconds
+                response = requests.get('http://localhost:8080/api/posts/training-data/all', timeout=2)
+                if response.status_code != 200:
+                    # If API is not available, return simplified response with mock data
+                    return self._get_mock_recommendations()
+            except requests.exceptions.RequestException as e:
+                # If API is not available, return simplified response with mock data
+                return self._get_mock_recommendations()
+            
+            # Fetch training data
+            training_data = engine.fetch_training_data()
+            if not training_data:
+                return Response({
+                    'error': 'No training data available',
+                    'summary': 'Model training failed due to missing data'
+                }, status=400)
+            
+            # Train the model
             engine.train()
             
-            # Get some basic statistics about the model
+            # Get recommendations for all users
+            all_recommendations = engine.get_all_recommendations()
+            if not all_recommendations:
+                return Response({
+                    'error': 'No recommendations available',
+                    'summary': 'No recommendations could be generated'
+                }, status=404)
+            
+            # Get training statistics
             stats = {
                 'num_users': len(engine.user_embeddings),
                 'num_posts': len(engine.post_embeddings),
@@ -77,49 +72,93 @@ class UserPostInteractionViewSet(viewsets.ModelViewSet):
             }
             
             return Response({
-                'message': 'Model retrained successfully',
-                'stats': stats
+                'message': 'Model trained and recommendations generated successfully',
+                'stats': stats,
+                'recommendations': all_recommendations,
+                'summary': f"Trained model with {stats['num_users']} users and {stats['num_posts']} posts"
             })
+            
         except Exception as e:
+            # Get full traceback
+            error_details = traceback.format_exc()
+            print(f"Error in train_and_recommend: {error_details}")
+            
             return Response({
-                'error': str(e)
+                'error': str(e),
+                'details': error_details,
+                'summary': 'An error occurred during model training and recommendation generation'
             }, status=500)
-
-    @action(detail=False, methods=['post'])
-    def train_all_data(self, request):
-        """Train the recommendation model on all available data"""
-        try:
-            engine = RecommendationEngine()
             
-            # Fetch all training data
-            training_data = engine.fetch_training_data()
-            if not training_data:
-                return Response({
-                    'error': 'No training data available'
-                }, status=400)
-            
-            # Preprocess all data
-            post_features, user_interactions = engine.preprocess_data(training_data)
-            
-            # Train the model
-            engine.train()
-            
-            # Get training statistics
-            stats = {
-                'num_users': len(engine.user_embeddings),
-                'num_posts': len(engine.post_embeddings),
-                'num_interactions': sum(len(interactions['views'] | interactions['likes']) 
-                                     for interactions in user_interactions.values()),
-                'model_saved': os.path.exists(engine.model_path),
-                'embeddings_saved': os.path.exists(engine.embeddings_path),
-                'training_data_size': len(training_data)
-            }
-            
-            return Response({
-                'message': 'Model trained successfully on all data',
-                'stats': stats
-            })
-        except Exception as e:
-            return Response({
-                'error': str(e)
-            }, status=500)
+    def _get_mock_recommendations(self):
+        """Return mock recommendations for testing when API is unavailable"""
+        mock_data = {
+            'message': 'MOCK DATA: External API not available, using mock recommendations',
+            'stats': {
+                'num_users': 3,
+                'num_posts': 5,
+                'model_saved': False,
+                'embeddings_saved': False
+            },
+            'summary': 'Using mock data because external API is unavailable',
+            'recommendations': [
+                {
+                    'user_id': 'user1',
+                    'embedding': [0.1, 0.2, 0.3],
+                    'similar_users': [
+                        {'user_id': 'user2', 'similarity': 0.85}
+                    ],
+                    'collaborative_recommendations': [
+                        {'post_id': 'post1', 'score': 0.92},
+                        {'post_id': 'post3', 'score': 0.75}
+                    ],
+                    'content_based_recommendations': [
+                        {'post_id': 'post2', 'score': 0.88},
+                        {'post_id': 'post5', 'score': 0.65}
+                    ],
+                    'hybrid_recommendations': [
+                        {'post_id': 'post1', 'score': 0.90},
+                        {'post_id': 'post2', 'score': 0.85}
+                    ]
+                },
+                {
+                    'user_id': 'user2',
+                    'embedding': [0.2, 0.3, 0.4],
+                    'similar_users': [
+                        {'user_id': 'user1', 'similarity': 0.85}
+                    ],
+                    'collaborative_recommendations': [
+                        {'post_id': 'post2', 'score': 0.90},
+                        {'post_id': 'post4', 'score': 0.72}
+                    ],
+                    'content_based_recommendations': [
+                        {'post_id': 'post3', 'score': 0.82},
+                        {'post_id': 'post5', 'score': 0.68}
+                    ],
+                    'hybrid_recommendations': [
+                        {'post_id': 'post2', 'score': 0.88},
+                        {'post_id': 'post3', 'score': 0.82}
+                    ]
+                },
+                {
+                    'user_id': 'user3',
+                    'embedding': [0.3, 0.4, 0.5],
+                    'similar_users': [
+                        {'user_id': 'user2', 'similarity': 0.78}
+                    ],
+                    'collaborative_recommendations': [
+                        {'post_id': 'post3', 'score': 0.88},
+                        {'post_id': 'post1', 'score': 0.70}
+                    ],
+                    'content_based_recommendations': [
+                        {'post_id': 'post4', 'score': 0.85},
+                        {'post_id': 'post2', 'score': 0.62}
+                    ],
+                    'hybrid_recommendations': [
+                        {'post_id': 'post3', 'score': 0.86},
+                        {'post_id': 'post4', 'score': 0.80}
+                    ]
+                }
+            ]
+        }
+        
+        return Response(mock_data)

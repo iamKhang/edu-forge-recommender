@@ -8,6 +8,7 @@ import requests
 from datetime import datetime
 import os
 import pickle
+import json
 
 class RecommendationEngine:
     def __init__(self):
@@ -17,12 +18,40 @@ class RecommendationEngine:
         self.user_embeddings = {}
         self.post_embeddings = {}
         self.content_embeddings = {}
-        self.model_path = 'recommender/model/recommendation_model'
-        self.embeddings_path = 'recommender/model/embeddings.pkl'
+        self.model_path = 'recommender/model/recommendation_model.keras'
+        self.embeddings_path = 'recommender/model/embeddings.json'
         
         # Create model directory if it doesn't exist
         os.makedirs('recommender/model', exist_ok=True)
         
+        # Load model and embeddings if they exist
+        self._load_model()
+        self._load_embeddings()
+
+    def _load_model(self):
+        """Load the trained model if it exists"""
+        if os.path.exists(self.model_path):
+            try:
+                self.model = tf.keras.models.load_model(self.model_path)
+                print("Model loaded successfully")
+            except Exception as e:
+                print(f"Error loading model: {e}")
+                self.model = None
+
+    def _load_embeddings(self):
+        """Load the embeddings if they exist"""
+        if os.path.exists(self.embeddings_path):
+            try:
+                with open(self.embeddings_path, 'r') as f:
+                    data = json.load(f)
+                    self.user_embeddings = data.get('user_embeddings', {})
+                    self.post_embeddings = data.get('post_embeddings', {})
+                print("Embeddings loaded successfully")
+            except Exception as e:
+                print(f"Error loading embeddings: {e}")
+                self.user_embeddings = {}
+                self.post_embeddings = {}
+
     def save_model(self):
         """Save the trained model and embeddings"""
         if self.model:
@@ -32,15 +61,15 @@ class RecommendationEngine:
                 'post_embeddings': self.post_embeddings,
                 'content_embeddings': self.content_embeddings
             }
-            with open(self.embeddings_path, 'wb') as f:
-                pickle.dump(embeddings, f)
+            with open(self.embeddings_path, 'w') as f:
+                json.dump(embeddings, f)
                 
     def load_model(self):
         """Load the trained model and embeddings"""
         if os.path.exists(self.model_path) and os.path.exists(self.embeddings_path):
             self.model = tf.keras.models.load_model(self.model_path)
-            with open(self.embeddings_path, 'rb') as f:
-                embeddings = pickle.load(f)
+            with open(self.embeddings_path, 'r') as f:
+                embeddings = json.load(f)
                 self.user_embeddings = embeddings['user_embeddings']
                 self.post_embeddings = embeddings['post_embeddings']
                 self.content_embeddings = embeddings.get('content_embeddings', {})
@@ -250,11 +279,11 @@ class RecommendationEngine:
                 user_content_profile.reshape(1, -1),
                 content_vector.reshape(1, -1)
             )[0][0]
-            scores.append((post_id, similarity))
+            scores.append((post_id, float(similarity)))  # Convert to float
         
         # Sort by similarity and return top recommendations
         scores.sort(key=lambda x: x[1], reverse=True)
-        return [post_id for post_id, _ in scores[:num_recommendations]]
+        return scores[:num_recommendations]  # Return list of (post_id, score) tuples
 
     def get_hybrid_recommendations(self, user_id, num_recommendations=5):
         """Get hybrid recommendations combining collaborative and content-based filtering"""
@@ -276,13 +305,11 @@ class RecommendationEngine:
         content_weight = 0.4
         
         # Add collaborative filtering scores
-        for i, post_id in enumerate(collab_recommendations):
-            score = (num_recommendations - i) / num_recommendations
+        for post_id, score in collab_recommendations:
             combined_scores[post_id] = score * collab_weight
             
         # Add content-based filtering scores
-        for i, post_id in enumerate(content_recommendations):
-            score = (num_recommendations - i) / num_recommendations
+        for post_id, score in content_recommendations:
             if post_id in combined_scores:
                 combined_scores[post_id] += score * content_weight
             else:
@@ -295,7 +322,7 @@ class RecommendationEngine:
             reverse=True
         )
         
-        return [post_id for post_id, _ in sorted_recommendations[:num_recommendations]]
+        return sorted_recommendations[:num_recommendations]  # Return list of (post_id, score) tuples
 
     def get_recommendations(self, user_id, num_recommendations=5):
         """Get post recommendations for a user using collaborative filtering"""
@@ -311,11 +338,11 @@ class RecommendationEngine:
             similarity = np.dot(user_embedding, post_embedding) / (
                 np.linalg.norm(user_embedding) * np.linalg.norm(post_embedding)
             )
-            scores.append((post_id, similarity))
+            scores.append((post_id, float(similarity)))  # Convert to float
         
         # Sort by similarity and return top recommendations
         scores.sort(key=lambda x: x[1], reverse=True)
-        return [post_id for post_id, _ in scores[:num_recommendations]]
+        return scores[:num_recommendations]  # Return list of (post_id, score) tuples
 
     def get_user_profile(self, user_id):
         """Get user profile with their interests and behavior patterns"""
@@ -332,21 +359,31 @@ class RecommendationEngine:
                 similarity = np.dot(user_embedding, other_embedding) / (
                     np.linalg.norm(user_embedding) * np.linalg.norm(other_embedding)
                 )
-                user_similarities.append((other_user_id, similarity))
+                user_similarities.append((other_user_id, float(similarity)))  # Convert to float
         
         # Sort by similarity
         user_similarities.sort(key=lambda x: x[1], reverse=True)
         
+        # Convert numpy arrays to lists and ensure all values are JSON serializable
         return {
             'user_id': user_id,
-            'embedding': user_embedding.tolist(),
+            'embedding': user_embedding.tolist(),  # Convert numpy array to list
             'similar_users': [
-                {'user_id': uid, 'similarity': float(sim)}
+                {'user_id': uid, 'similarity': sim}  # sim is already float
                 for uid, sim in user_similarities[:5]
             ],
-            'collaborative_recommendations': self.get_recommendations(user_id),
-            'content_based_recommendations': self.get_content_based_recommendations(user_id),
-            'hybrid_recommendations': self.get_hybrid_recommendations(user_id)
+            'collaborative_recommendations': [
+                {'post_id': pid, 'score': float(score)} 
+                for pid, score in self.get_recommendations(user_id)
+            ],
+            'content_based_recommendations': [
+                {'post_id': pid, 'score': float(score)}
+                for pid, score in self.get_content_based_recommendations(user_id)
+            ],
+            'hybrid_recommendations': [
+                {'post_id': pid, 'score': float(score)}
+                for pid, score in self.get_hybrid_recommendations(user_id)
+            ]
         }
 
     def get_all_recommendations(self):
