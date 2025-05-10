@@ -78,10 +78,26 @@ class RecommendationEngine:
 
     def fetch_training_data(self):
         """Fetch training data from API"""
-        response = requests.get('http://localhost:8080/api/posts/training-data/all')
-        if response.status_code == 200:
-            return response.json()
-        return []
+        # Get API host and port from environment variables or use defaults
+        api_host = os.environ.get('API_HOST', 'localhost')
+        api_port = os.environ.get('API_PORT', '8080')
+        
+        # Always include port since services are in different Docker Compose networks
+        api_url = f"http://{api_host}:{api_port}/api/posts/training-data/all"
+        
+        print(f"Fetching training data from: {api_url}")
+        
+        try:
+            response = requests.get(api_url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                print(f"Successfully fetched {len(data)} training records")
+                return data
+            print(f"Failed to fetch training data: HTTP {response.status_code}")
+            return []
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching training data: {e}")
+            return []
 
     def preprocess_data(self, posts):
         """Preprocess posts data for training"""
