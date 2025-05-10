@@ -2,9 +2,11 @@ from django.db import models
 
 # Create your models here.
 
-class Course(models.Model):
+class Post(models.Model):
+    id = models.CharField(max_length=100, primary_key=True)
     title = models.CharField(max_length=200)
-    description = models.TextField()
+    content = models.TextField()
+    tags = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -12,6 +14,7 @@ class Course(models.Model):
         return self.title
 
 class User(models.Model):
+    id = models.CharField(max_length=100, primary_key=True)
     username = models.CharField(max_length=100, unique=True)
     email = models.EmailField(unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -19,11 +22,16 @@ class User(models.Model):
     def __str__(self):
         return self.username
 
-class UserCourseInteraction(models.Model):
+class UserPostInteraction(models.Model):
+    INTERACTION_TYPES = (
+        ('view', 'View'),
+        ('like', 'Like'),
+    )
+    
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    course = models.ForeignKey(Course, on_delete=models.CASCADE)
-    interaction_type = models.CharField(max_length=50)  # e.g., 'view', 'enroll', 'complete'
+    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    interaction_type = models.CharField(max_length=10, choices=INTERACTION_TYPES)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'course', 'interaction_type')
+        unique_together = ('user', 'post', 'interaction_type')
