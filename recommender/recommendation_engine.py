@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 import requests
 from datetime import datetime
 import os
@@ -15,6 +16,7 @@ class RecommendationEngine:
         self.content_vectorizer = TfidfVectorizer(max_features=1000)
         self.user_embeddings = {}
         self.post_embeddings = {}
+        self.content_embeddings = {}
         self.model_path = 'recommender/model/recommendation_model'
         self.embeddings_path = 'recommender/model/embeddings.pkl'
         
@@ -27,7 +29,8 @@ class RecommendationEngine:
             self.model.save(self.model_path)
             embeddings = {
                 'user_embeddings': self.user_embeddings,
-                'post_embeddings': self.post_embeddings
+                'post_embeddings': self.post_embeddings,
+                'content_embeddings': self.content_embeddings
             }
             with open(self.embeddings_path, 'wb') as f:
                 pickle.dump(embeddings, f)
@@ -40,6 +43,7 @@ class RecommendationEngine:
                 embeddings = pickle.load(f)
                 self.user_embeddings = embeddings['user_embeddings']
                 self.post_embeddings = embeddings['post_embeddings']
+                self.content_embeddings = embeddings.get('content_embeddings', {})
             return True
         return False
 
@@ -56,12 +60,21 @@ class RecommendationEngine:
         post_features = []
         user_interactions = {}
         
+        # Prepare content for TF-IDF
+        contents = []
         for post in posts:
+            contents.append(post.get('content', ''))
+        
+        # Fit and transform content
+        content_vectors = self.content_vectorizer.fit_transform(contents)
+        
+        for i, post in enumerate(posts):
             # Process tags
             tags = post.get('tags', [])
             
             # Process content
             content = post.get('content', '')
+            content_vector = content_vectors[i].toarray()[0]
             
             # Process user interactions
             views = post.get('views', [])
@@ -74,10 +87,12 @@ class RecommendationEngine:
                     user_interactions[user_id] = {
                         'views': set(),
                         'likes': set(),
-                        'tags': set()
+                        'tags': set(),
+                        'content_vectors': []
                     }
                 user_interactions[user_id]['views'].add(post['id'])
                 user_interactions[user_id]['tags'].update(tags)
+                user_interactions[user_id]['content_vectors'].append(content_vector)
             
             for like in likes:
                 user_id = like['userId']
@@ -85,17 +100,23 @@ class RecommendationEngine:
                     user_interactions[user_id] = {
                         'views': set(),
                         'likes': set(),
-                        'tags': set()
+                        'tags': set(),
+                        'content_vectors': []
                     }
                 user_interactions[user_id]['likes'].add(post['id'])
                 user_interactions[user_id]['tags'].update(tags)
+                user_interactions[user_id]['content_vectors'].append(content_vector)
             
             # Store post features
             post_features.append({
                 'id': post['id'],
                 'tags': tags,
-                'content': content
+                'content': content,
+                'content_vector': content_vector
             })
+            
+            # Store content embedding
+            self.content_embeddings[post['id']] = content_vector
         
         return post_features, user_interactions
 
@@ -205,8 +226,79 @@ class RecommendationEngine:
         # Save the trained model and embeddings
         self.save_model()
 
+    def get_content_based_recommendations(self, user_id, num_recommendations=5):
+        """Get content-based recommendations for a user"""
+        if user_id not in self.user_embeddings:
+            return []
+            
+        # Get user's content preferences
+        user_content_vectors = []
+        for post_id in self.post_embeddings.keys():
+            if post_id in self.content_embeddings:
+                user_content_vectors.append(self.content_embeddings[post_id])
+                
+        if not user_content_vectors:
+            return []
+            
+        # Calculate user's content profile (average of their interacted content)
+        user_content_profile = np.mean(user_content_vectors, axis=0)
+        
+        # Calculate similarity with all posts
+        scores = []
+        for post_id, content_vector in self.content_embeddings.items():
+            similarity = cosine_similarity(
+                user_content_profile.reshape(1, -1),
+                content_vector.reshape(1, -1)
+            )[0][0]
+            scores.append((post_id, similarity))
+        
+        # Sort by similarity and return top recommendations
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return [post_id for post_id, _ in scores[:num_recommendations]]
+
+    def get_hybrid_recommendations(self, user_id, num_recommendations=5):
+        """Get hybrid recommendations combining collaborative and content-based filtering"""
+        if not self.model or user_id not in self.user_embeddings:
+            return []
+            
+        # Get collaborative filtering recommendations
+        collab_recommendations = self.get_recommendations(user_id, num_recommendations)
+        
+        # Get content-based recommendations
+        content_recommendations = self.get_content_based_recommendations(user_id, num_recommendations)
+        
+        # Combine recommendations with weights
+        combined_scores = {}
+        
+        # Weight for collaborative filtering
+        collab_weight = 0.6
+        # Weight for content-based filtering
+        content_weight = 0.4
+        
+        # Add collaborative filtering scores
+        for i, post_id in enumerate(collab_recommendations):
+            score = (num_recommendations - i) / num_recommendations
+            combined_scores[post_id] = score * collab_weight
+            
+        # Add content-based filtering scores
+        for i, post_id in enumerate(content_recommendations):
+            score = (num_recommendations - i) / num_recommendations
+            if post_id in combined_scores:
+                combined_scores[post_id] += score * content_weight
+            else:
+                combined_scores[post_id] = score * content_weight
+        
+        # Sort by combined score
+        sorted_recommendations = sorted(
+            combined_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        
+        return [post_id for post_id, _ in sorted_recommendations[:num_recommendations]]
+
     def get_recommendations(self, user_id, num_recommendations=5):
-        """Get post recommendations for a user"""
+        """Get post recommendations for a user using collaborative filtering"""
         if not self.model or user_id not in self.user_embeddings:
             return []
         
@@ -252,7 +344,9 @@ class RecommendationEngine:
                 {'user_id': uid, 'similarity': float(sim)}
                 for uid, sim in user_similarities[:5]
             ],
-            'recommended_posts': self.get_recommendations(user_id)
+            'collaborative_recommendations': self.get_recommendations(user_id),
+            'content_based_recommendations': self.get_content_based_recommendations(user_id),
+            'hybrid_recommendations': self.get_hybrid_recommendations(user_id)
         }
 
     def get_all_recommendations(self):

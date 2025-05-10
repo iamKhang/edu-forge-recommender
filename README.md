@@ -1,120 +1,160 @@
 # Edu Forge Recommender
 
-A Django REST Framework application with TensorFlow integration for course recommendations.
+Hệ thống đề xuất nội dung học tập thông minh sử dụng kết hợp nhiều thuật toán recommendation.
 
-## Thuật toán Recommendation Engine
+## 1. Tổng quan về các thuật toán
 
-### 1. Tổng quan
-Hệ thống sử dụng mô hình Deep Learning kết hợp với Collaborative Filtering để tạo ra các đề xuất bài viết cho người dùng. Mô hình học cách biểu diễn người dùng và bài viết trong không gian embedding, sau đó sử dụng các biểu diễn này để dự đoán mức độ phù hợp giữa người dùng và bài viết.
+Hệ thống sử dụng 3 phương pháp đề xuất chính:
 
-### 2. Kiến trúc Model
+### 1.1. Collaborative Filtering với Deep Learning
+- Sử dụng mạng neural network để học các embedding của users và posts
+- Tự động phát hiện các pattern ẩn trong dữ liệu tương tác
+- Có khả năng học các mối quan hệ phi tuyến tính
+
+### 1.2. Content-Based Filtering
+- Phân tích nội dung bài viết để tìm các đặc trưng quan trọng
+- Xây dựng profile người dùng dựa trên nội dung họ đã tương tác
+- Đề xuất các bài viết có nội dung tương tự
+
+### 1.3. Hybrid Filtering
+- Kết hợp cả hai phương pháp trên để tận dụng ưu điểm của mỗi phương pháp
+- Giảm thiểu vấn đề cold-start
+- Cân bằng giữa sở thích cá nhân và xu hướng chung
+
+## 2. Chi tiết kỹ thuật
+
+### 2.1. Collaborative Filtering Model
 
 ```python
-# User input
+# Kiến trúc mạng neural network
 user_input = tf.keras.layers.Input(shape=(1,))
 user_embedding = tf.keras.layers.Embedding(num_users, embedding_dim)(user_input)
 user_vec = tf.keras.layers.Flatten()(user_embedding)
 
-# Post input
 post_input = tf.keras.layers.Input(shape=(1,))
 post_embedding = tf.keras.layers.Embedding(num_posts, embedding_dim)(post_input)
 post_vec = tf.keras.layers.Flatten()(post_embedding)
 
-# Merge layers
 concat = tf.keras.layers.Concatenate()([user_vec, post_vec])
 dense1 = tf.keras.layers.Dense(64, activation='relu')(concat)
 dense2 = tf.keras.layers.Dense(32, activation='relu')(dense1)
 output = tf.keras.layers.Dense(1, activation='sigmoid')(dense2)
 ```
 
-### 3. Quy trình xử lý dữ liệu
+#### Đặc điểm:
+- Embedding dimension: 32
+- Hidden layers: 2 (64 và 32 neurons)
+- Activation: ReLU cho hidden layers, Sigmoid cho output
+- Loss function: Binary Cross Entropy
+- Optimizer: Adam
 
-#### 3.1. Thu thập dữ liệu
+### 2.2. Content-Based Filtering
+
+#### Xử lý nội dung:
+- Sử dụng TF-IDF để vector hóa nội dung
+- Trích xuất 1000 features quan trọng nhất
+- Tính toán similarity sử dụng cosine similarity
+
+#### Công thức tính similarity:
+```
+similarity = dot(user_profile, post_vector) / (norm(user_profile) * norm(post_vector))
+```
+
+### 2.3. Hybrid Filtering
+
+#### Công thức kết hợp:
+```
+final_score = (collab_score * 0.6) + (content_score * 0.4)
+```
+
+## 3. Quy trình xử lý dữ liệu
+
+### 3.1. Thu thập dữ liệu
 - Lấy dữ liệu từ API: `http://localhost:8080/api/posts/training-data/all`
-- Dữ liệu bao gồm:
+- Bao gồm:
   - Thông tin bài viết (id, tags, content)
   - Tương tác người dùng (views, likes)
 
-#### 3.2. Tiền xử lý
+### 3.2. Tiền xử lý
 1. **Xử lý tags:**
-   - Chuyển đổi tags thành vector nhị phân sử dụng MultiLabelBinarizer
-   - Mỗi bài viết được biểu diễn bằng một vector 0/1
+   - Chuyển đổi tags thành vector nhị phân
+   - Sử dụng MultiLabelBinarizer
 
 2. **Xử lý nội dung:**
-   - Sử dụng TfidfVectorizer để chuyển đổi nội dung thành vector
-   - Trích xuất 1000 features quan trọng nhất
+   - Vector hóa nội dung với TfidfVectorizer
+   - Lưu trữ content embeddings
 
 3. **Xử lý tương tác:**
-   - Tạo ma trận tương tác người dùng-bài viết
-   - Ghi nhận các tương tác: views và likes
+   - Tạo ma trận tương tác user-post
+   - Ghi nhận views và likes
 
-### 4. Quá trình Training
-
-#### 4.1. Chuẩn bị dữ liệu training
-1. **Positive samples:**
-   - Các cặp (user, post) có tương tác
-   - Label = 1
-
-2. **Negative samples:**
-   - Chọn ngẫu nhiên các bài viết chưa tương tác
-   - Số lượng bằng với số positive samples
-   - Label = 0
-
-#### 4.2. Training model
-- Optimizer: Adam
-- Loss function: Binary Cross Entropy
-- Metrics: Accuracy
+### 3.3. Training
 - Epochs: 10
 - Batch size: 64
 - Validation split: 20%
+- Positive samples: Các cặp (user, post) có tương tác
+- Negative samples: Chọn ngẫu nhiên các bài viết chưa tương tác
 
-### 5. Tạo Recommendations
+## 4. API Endpoints
 
-#### 5.1. Tính toán similarity
-- Sử dụng cosine similarity giữa user embedding và post embedding
-- Công thức: 
+### 4.1. Train Model
 ```
-similarity = dot(user_embedding, post_embedding) / (norm(user_embedding) * norm(post_embedding))
+POST /api/v1/interactions/retrain_model/
+```
+Response:
+```json
+{
+    "message": "Model retrained successfully",
+    "stats": {
+        "num_users": 100,
+        "num_posts": 50,
+        "model_saved": true,
+        "embeddings_saved": true
+    }
+}
 ```
 
-#### 5.2. Tìm users tương tự
-- Tính similarity giữa user hiện tại với tất cả users khác
-- Sắp xếp theo độ tương đồng giảm dần
-- Lấy top 5 users tương tự nhất
+### 4.2. Train Model với Toàn bộ Dữ liệu
+```
+POST /api/v1/interactions/train_all_data/
+```
+Response:
+```json
+{
+    "message": "Model trained successfully on all data",
+    "stats": {
+        "num_users": 100,
+        "num_posts": 50,
+        "num_interactions": 1000,
+        "model_saved": true,
+        "embeddings_saved": true,
+        "training_data_size": 150
+    }
+}
+```
 
-#### 5.3. Đề xuất bài viết
-- Tính similarity giữa user với tất cả bài viết
-- Sắp xếp theo độ tương đồng giảm dần
-- Lấy top 5 bài viết phù hợp nhất
-
-### 6. API Endpoints
-
-#### 6.1. Lấy recommendations cho một user
+### 4.3. Lấy Recommendations
 ```
 GET /api/v1/interactions/get_recommendations/?user_id=<id>
 ```
 Response:
 ```json
 {
-  "user_id": "user_id",
-  "embedding": [...],  // Vector 32 chiều
-  "similar_users": [
-    {
-      "user_id": "similar_user_id",
-      "similarity": 0.75
-    }
-  ],
-  "recommended_posts": ["post_id1", "post_id2", ...]
+    "user_id": "user_id",
+    "embedding": [...],
+    "similar_users": [
+        {
+            "user_id": "similar_user_id",
+            "similarity": 0.75
+        }
+    ],
+    "collaborative_recommendations": ["post_id1", "post_id2", ...],
+    "content_based_recommendations": ["post_id1", "post_id2", ...],
+    "hybrid_recommendations": ["post_id1", "post_id2", ...]
 }
 ```
 
-#### 6.2. Lấy recommendations cho tất cả users
-```
-GET /api/v1/interactions/get_all_recommendations/
-```
-Response: Mảng các user profiles với recommendations
-
-### 7. Cài đặt và Chạy
+## 5. Cài đặt và Chạy
 
 1. Tạo môi trường ảo:
 ```bash
@@ -137,24 +177,25 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-### 8. Lưu ý quan trọng
+## 6. Lưu ý quan trọng
 
 1. **Tính ngẫu nhiên:**
-   - Model sử dụng tính ngẫu nhiên trong quá trình training
-   - Mỗi lần train sẽ cho kết quả khác nhau
-   - Giúp model học được nhiều pattern khác nhau
+   - Model sử dụng tính ngẫu nhiên trong training
+   - Mỗi lần train cho kết quả khác nhau
+   - Giúp học được nhiều pattern khác nhau
 
 2. **Hiệu suất:**
-   - Lần đầu gọi API sẽ mất thời gian để train model
+   - Lần đầu gọi API sẽ mất thời gian để train
    - Các lần sau sẽ nhanh hơn
-   - Đảm bảo API training data có thể truy cập được
+   - Đảm bảo API training data có thể truy cập
 
 3. **Chất lượng recommendations:**
    - Phụ thuộc vào chất lượng dữ liệu training
-   - Càng nhiều tương tác, recommendations càng chính xác
-   - Có thể điều chỉnh các hyperparameters để cải thiện kết quả
+   - Càng nhiều tương tác, càng chính xác
+   - Có thể điều chỉnh hyperparameters
 
-## Setup
-
-1. Create a virtual environment:
-```
+4. **Ưu điểm của Hybrid Filtering:**
+   - Kết hợp ưu điểm của cả 2 phương pháp
+   - Giảm cold-start problem
+   - Đa dạng hóa recommendations
+   - Cân bằng sở thích cá nhân và xu hướng chung
