@@ -9,6 +9,9 @@ from datetime import datetime
 import os
 import pickle
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class RecommendationEngine:
     def __init__(self):
@@ -54,27 +57,83 @@ class RecommendationEngine:
 
     def save_model(self):
         """Save the trained model and embeddings"""
-        if self.model:
-            self.model.save(self.model_path)
-            embeddings = {
-                'user_embeddings': self.user_embeddings,
-                'post_embeddings': self.post_embeddings,
-                'content_embeddings': self.content_embeddings
+        try:
+            # Convert dictionary embeddings to serializable format
+            model_data = {
+                'user_embeddings': {
+                    str(k): v.tolist() if isinstance(v, np.ndarray) else v
+                    for k, v in self.user_embeddings.items()
+                } if hasattr(self, 'user_embeddings') else {},
+                'post_embeddings': {
+                    str(k): v.tolist() if isinstance(v, np.ndarray) else v
+                    for k, v in self.post_embeddings.items()
+                } if hasattr(self, 'post_embeddings') else {},
+                'content_embeddings': {
+                    str(k): v.tolist() if isinstance(v, np.ndarray) else v
+                    for k, v in self.content_embeddings.items()
+                } if hasattr(self, 'content_embeddings') else {},
+                'user_mapping': self.user_mapping if hasattr(self, 'user_mapping') else {},
+                'item_mapping': self.item_mapping if hasattr(self, 'item_mapping') else {},
+                'reverse_user_mapping': {str(k): v for k, v in self.reverse_user_mapping.items()} if hasattr(self, 'reverse_user_mapping') else {},
+                'reverse_item_mapping': {str(k): v for k, v in self.reverse_item_mapping.items()} if hasattr(self, 'reverse_item_mapping') else {},
+                'n_factors': getattr(self, 'n_factors', 32),
+                'learning_rate': getattr(self, 'learning_rate', 0.001),
+                'n_epochs': getattr(self, 'n_epochs', 10),
+                'reg': getattr(self, 'reg', 0.01),
+                'last_trained': datetime.now().isoformat()
             }
-            with open(self.embeddings_path, 'w') as f:
-                json.dump(embeddings, f)
+            
+            with open(self.model_path, 'w') as f:
+                json.dump(model_data, f)
                 
+            logger.info(f"Model saved successfully to {self.model_path}")
+            
+        except Exception as e:
+            logger.error(f"Error saving model: {str(e)}")
+            raise
+
     def load_model(self):
         """Load the trained model and embeddings"""
-        if os.path.exists(self.model_path) and os.path.exists(self.embeddings_path):
-            self.model = tf.keras.models.load_model(self.model_path)
-            with open(self.embeddings_path, 'r') as f:
-                embeddings = json.load(f)
-                self.user_embeddings = embeddings['user_embeddings']
-                self.post_embeddings = embeddings['post_embeddings']
-                self.content_embeddings = embeddings.get('content_embeddings', {})
-            return True
-        return False
+        try:
+            if os.path.exists(self.model_path):
+                with open(self.model_path, 'r') as f:
+                    model_data = json.load(f)
+                
+                # Convert dictionary embeddings back to numpy arrays
+                self.user_embeddings = {
+                    int(k): np.array(v) if isinstance(v, list) else v
+                    for k, v in model_data.get('user_embeddings', {}).items()
+                }
+                self.post_embeddings = {
+                    int(k): np.array(v) if isinstance(v, list) else v
+                    for k, v in model_data.get('post_embeddings', {}).items()
+                }
+                self.content_embeddings = {
+                    int(k): np.array(v) if isinstance(v, list) else v
+                    for k, v in model_data.get('content_embeddings', {}).items()
+                }
+                
+                # Load mappings and parameters
+                self.user_mapping = model_data.get('user_mapping', {})
+                self.item_mapping = model_data.get('item_mapping', {})
+                self.reverse_user_mapping = {
+                    int(k): v for k, v in model_data.get('reverse_user_mapping', {}).items()
+                }
+                self.reverse_item_mapping = {
+                    int(k): v for k, v in model_data.get('reverse_item_mapping', {}).items()
+                }
+                self.n_factors = model_data.get('n_factors', 32)
+                self.learning_rate = model_data.get('learning_rate', 0.001)
+                self.n_epochs = model_data.get('n_epochs', 10)
+                self.reg = model_data.get('reg', 0.01)
+                
+                logger.info(f"Model loaded successfully from {self.model_path}")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error loading model: {str(e)}")
+            return False
 
     def fetch_training_data(self):
         """Fetch training data from API"""
