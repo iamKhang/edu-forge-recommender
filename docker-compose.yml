@@ -6,7 +6,7 @@ services:
     environment:
       - EXTERNAL_API_URL=http://eduforge-post-app:8080
     ports:
-      - "8000:8000"
+      - "8090:8000"
     volumes:
       - ./:/app
     networks:
