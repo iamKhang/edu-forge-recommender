@@ -8,9 +8,26 @@ services:
     environment:
       - EXTERNAL_API_URL=http://eduforge-post-app:8080
       - PYTHONUNBUFFERED=1
+      - DEBUG=True
     networks:
       - eduforge-network
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - recommender_data:/app/recommender/model
 
 networks:
   eduforge-network:
@@ -18,4 +35,4 @@ networks:
     name: eduforge-network
 
 volumes:
-  recommender_data: 
+  recommender_data:

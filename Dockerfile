@@ -26,5 +26,5 @@ RUN python manage.py collectstatic --noinput || echo "No static files to collect
 # Expose port
 EXPOSE 8000
 
-# Run server
-CMD ["gunicorn", "edu_forge_recommender.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "600"] 
+# Run server with increased timeout and worker settings
+CMD ["gunicorn", "edu_forge_recommender.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "1200", "--keep-alive", "65", "--log-level", "debug"]

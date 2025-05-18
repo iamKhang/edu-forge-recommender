@@ -6,4 +6,5 @@ numpy==1.26.4
 pandas==2.2.1
 gunicorn==22.0.0
 requests==2.32.3
-urllib3==1.26.6  # Fix SSL warning 
+urllib3==1.26.6  # Fix SSL warning
+psutil==5.9.5  # For memory usage monitoring
