@@ -11,6 +11,15 @@ import requests
 import os
 import traceback
 import json
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Get the external API URL from environment variable, default to localhost if not set
+EXTERNAL_API_URL = os.getenv('EXTERNAL_API_URL', 'http://localhost:8080')
+TRAINING_DATA_ENDPOINT = f"{EXTERNAL_API_URL}/api/posts/training-data/all"
 
 # Create your views here.
 
@@ -35,42 +44,76 @@ class UserPostInteractionViewSet(viewsets.ModelViewSet):
             
             # Check if the external API is available
             try:
-                # Test the API connection first with a timeout of 2 seconds
-                response = requests.get('http://localhost:8080/api/posts/training-data/all', timeout=2)
-                if response.status_code != 200:
-                    # If API is not available, return simplified response with mock data
-                    return self._get_mock_recommendations()
+                logger.info(f"Attempting to connect to external API at: {TRAINING_DATA_ENDPOINT}")
+                # Test the API connection first with a timeout of 5 seconds
+                response = requests.get(TRAINING_DATA_ENDPOINT, timeout=5)
+                response.raise_for_status()  # Raise an exception for bad status codes
+                logger.info(f"Successfully connected to external API. Status code: {response.status_code}")
+                logger.info(f"Response content: {response.text[:200]}...")  # Log first 200 chars of response
             except requests.exceptions.RequestException as e:
+                # Log the specific error
+                logger.error(f"Failed to connect to external API: {str(e)}")
                 # If API is not available, return simplified response with mock data
                 return self._get_mock_recommendations()
             
             # Fetch training data
+            logger.info("Fetching training data...")
             training_data = engine.fetch_training_data()
-            if not training_data:
+            
+            if training_data is None:
+                logger.error("No training data returned from fetch_training_data()")
                 return Response({
                     'error': 'No training data available',
-                    'summary': 'Model training failed due to missing data'
+                    'summary': 'Model training failed due to missing data',
+                    'details': {
+                        'api_endpoint': TRAINING_DATA_ENDPOINT,
+                        'api_response_status': response.status_code if 'response' in locals() else None,
+                        'api_response_content': response.text[:200] if 'response' in locals() else None
+                    }
                 }, status=400)
             
+            logger.info(f"Training data fetched successfully. Size: {len(training_data)}")
+            
             # Train the model
-            engine.train()
+            logger.info("Starting model training...")
+            training_successful = engine.train()
+            
+            if not training_successful:
+                logger.error("Model training failed")
+                return Response({
+                    'error': 'Model training failed',
+                    'summary': 'The model could not be trained with the provided data',
+                    'details': {
+                        'training_data_size': len(training_data),
+                        'possible_reason': 'Insufficient user interactions or invalid data structure'
+                    }
+                }, status=400)
+                
+            logger.info("Model training completed successfully")
             
             # Get recommendations for all users
+            logger.info("Generating recommendations...")
             all_recommendations = engine.get_all_recommendations()
             if not all_recommendations:
+                logger.error("No recommendations generated after training")
                 return Response({
                     'error': 'No recommendations available',
-                    'summary': 'No recommendations could be generated'
+                    'summary': 'No recommendations could be generated',
+                    'details': {
+                        'model_trained': True,
+                        'training_data_size': len(training_data)
+                    }
                 }, status=404)
             
             # Get training statistics
             stats = {
-                'num_users': len(engine.user_embeddings),
-                'num_posts': len(engine.post_embeddings),
-                'model_saved': os.path.exists(engine.model_path),
-                'embeddings_saved': os.path.exists(engine.embeddings_path)
+                'num_users': len(engine.user_embeddings) if hasattr(engine, 'user_embeddings') else 0,
+                'num_posts': len(engine.post_embeddings) if hasattr(engine, 'post_embeddings') else 0,
+                'model_saved': os.path.exists(engine.model_path) if hasattr(engine, 'model_path') else False,
+                'embeddings_saved': os.path.exists(engine.embeddings_path) if hasattr(engine, 'embeddings_path') else False
             }
             
+            logger.info(f"Process completed successfully. Stats: {stats}")
             return Response({
                 'message': 'Model trained and recommendations generated successfully',
                 'stats': stats,
@@ -81,7 +124,7 @@ class UserPostInteractionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             # Get full traceback
             error_details = traceback.format_exc()
-            print(f"Error in train_and_recommend: {error_details}")
+            logger.error(f"Error in train_and_recommend: {error_details}")
             
             return Response({
                 'error': str(e),

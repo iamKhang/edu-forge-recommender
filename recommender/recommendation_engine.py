@@ -137,26 +137,36 @@ class RecommendationEngine:
 
     def fetch_training_data(self):
         """Fetch training data from API"""
-        # Get API host and port from environment variables or use defaults
-        api_host = os.environ.get('API_HOST', 'localhost')
-        api_port = os.environ.get('API_PORT', '8080')
+        # Get API URL from environment variable or use default
+        external_api_url = os.environ.get('EXTERNAL_API_URL', 'http://localhost:8080')
         
-        # Always include port since services are in different Docker Compose networks
-        api_url = f"http://{api_host}:{api_port}/api/posts/training-data/all"
+        # Build the full API endpoint
+        api_url = f"{external_api_url}/api/posts/training-data/all"
         
-        print(f"Fetching training data from: {api_url}")
+        logger.info(f"Fetching training data from: {api_url}")
         
         try:
             response = requests.get(api_url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                print(f"Successfully fetched {len(data)} training records")
+                logger.info(f"Successfully fetched {len(data)} training records")
+                
+                # Check if data is empty or invalid
+                if not data or len(data) == 0:
+                    logger.error("Received empty data array from API")
+                    return None
+                
+                # Validate data structure
+                if not all(['id' in post and 'userId' in post for post in data]):
+                    logger.error("Data missing required fields (id or userId)")
+                    return None
+                    
                 return data
-            print(f"Failed to fetch training data: HTTP {response.status_code}")
-            return []
+            logger.error(f"Failed to fetch training data: HTTP {response.status_code}")
+            return None
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching training data: {e}")
-            return []
+            logger.error(f"Error fetching training data: {e}")
+            return None
 
     def preprocess_data(self, posts):
         """Preprocess posts data for training"""
@@ -262,11 +272,32 @@ class RecommendationEngine:
         """Train the recommendation model"""
         # Fetch and preprocess data
         posts = self.fetch_training_data()
+        
+        # Check if we have valid posts data
+        if posts is None or len(posts) == 0:
+            logger.error("No valid training data available")
+            return False
+            
         post_features, user_interactions = self.preprocess_data(posts)
+        
+        # Check if we have sufficient interaction data
+        if not user_interactions or len(user_interactions) == 0:
+            logger.error("No user interactions found in the training data")
+            return False
+        
+        if not post_features or len(post_features) == 0:
+            logger.error("No post features extracted from the training data")
+            return False
         
         # Create user and post mappings
         user_ids = list(user_interactions.keys())
         post_ids = [post['id'] for post in post_features]
+        
+        if len(user_ids) == 0 or len(post_ids) == 0:
+            logger.error(f"Insufficient data for training: {len(user_ids)} users, {len(post_ids)} posts")
+            return False
+        
+        logger.info(f"Training with {len(user_ids)} users and {len(post_ids)} posts")
         
         user_to_index = {user_id: idx for idx, user_id in enumerate(user_ids)}
         post_to_index = {post_id: idx for idx, post_id in enumerate(post_ids)}
@@ -280,55 +311,84 @@ class RecommendationEngine:
             user_idx = user_to_index[user_id]
             
             # Positive samples (interacted posts)
-            for post_id in interactions['views'] | interactions['likes']:
-                post_idx = post_to_index[post_id]
-                X_user.append(user_idx)
-                X_post.append(post_idx)
-                y.append(1)
+            interacted_posts = interactions['views'] | interactions['likes']
+            
+            if len(interacted_posts) == 0:
+                continue  # Skip users with no interactions
+                
+            for post_id in interacted_posts:
+                if post_id in post_to_index:  # Make sure the post is in our mapping
+                    post_idx = post_to_index[post_id]
+                    X_user.append(user_idx)
+                    X_post.append(post_idx)
+                    y.append(1)
             
             # Negative samples (non-interacted posts)
-            non_interacted = set(post_ids) - (interactions['views'] | interactions['likes'])
-            # Chọn ngẫu nhiên các bài viết chưa tương tác
-            non_interacted = np.random.choice(
-                list(non_interacted),
-                size=min(len(interactions['views'] | interactions['likes']), len(non_interacted)),
-                replace=False
-            )
-            for post_id in non_interacted:
+            non_interacted = set(post_ids) - interacted_posts
+            
+            # Skip if there are no non-interacted posts
+            if len(non_interacted) == 0:
+                continue
+                
+            # Choose random non-interacted posts
+            try:
+                non_interacted_sample = np.random.choice(
+                    list(non_interacted),
+                    size=min(len(interacted_posts), len(non_interacted)),
+                    replace=False
+                )
+            except ValueError as e:
+                logger.warning(f"Error sampling non-interacted posts for user {user_id}: {e}")
+                continue
+                
+            for post_id in non_interacted_sample:
                 post_idx = post_to_index[post_id]
                 X_user.append(user_idx)
                 X_post.append(post_idx)
                 y.append(0)
         
+        # Check if we have enough training data
+        if len(X_user) == 0 or len(X_post) == 0 or len(y) == 0:
+            logger.error("No training examples generated")
+            return False
+            
         # Convert to numpy arrays
         X_user = np.array(X_user)
         X_post = np.array(X_post)
         y = np.array(y)
         
+        logger.info(f"Created training dataset with {len(X_user)} examples")
+        
         # Build and train model
         self.model = self.build_model(len(user_ids), len(post_ids))
         
-        self.model.fit(
-            [X_user, X_post],
-            y,
-            epochs=10,
-            batch_size=64,
-            validation_split=0.2
-        )
-        
-        # Store embeddings for later use
-        self.user_embeddings = {
-            user_id: self.model.get_layer('user_embedding').get_weights()[0][user_to_index[user_id]]
-            for user_id in user_ids
-        }
-        
-        self.post_embeddings = {
-            post_id: self.model.get_layer('post_embedding').get_weights()[0][post_to_index[post_id]]
-            for post_id in post_ids
-        }
-        
-        # Save the trained model and embeddings
-        self.save_model()
+        try:
+            self.model.fit(
+                [X_user, X_post],
+                y,
+                epochs=10,
+                batch_size=64,
+                validation_split=0.2
+            )
+            
+            # Store embeddings for later use
+            self.user_embeddings = {
+                user_id: self.model.get_layer('user_embedding').get_weights()[0][user_to_index[user_id]]
+                for user_id in user_ids
+            }
+            
+            self.post_embeddings = {
+                post_id: self.model.get_layer('post_embedding').get_weights()[0][post_to_index[post_id]]
+                for post_id in post_ids
+            }
+            
+            # Save the trained model and embeddings
+            self.save_model()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error during model training: {e}")
+            return False
 
     def get_content_based_recommendations(self, user_id, num_recommendations=5):
         """Get content-based recommendations for a user"""

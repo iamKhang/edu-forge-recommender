@@ -1,22 +1,22 @@
-version: '3.8'
-
 services:
   # Recommender Service
   recommender:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: recommender
+    build: .
+    container_name: eduforge-recommender
     environment:
-      - API_HOST=host.docker.internal
-      - API_PORT=8080
-      - DJANGO_DEBUG=True
+      - EXTERNAL_API_URL=http://eduforge-post-app:8080
     ports:
       - "8000:8000"
     volumes:
       - ./:/app
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - eduforge-network
+    restart: always
+
+networks:
+  eduforge-network:
+    external: true
+    name: eduforge-network
 
 volumes:
   mongodb_data: 

@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-7ibng*qg%syyrarz&3k*7ok9)@xgv0-h)mj-+g5o6l(_t%%9kw
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['eduforge-recommender', 'localhost', '127.0.0.1', '*']
 
 
 # Application definition
