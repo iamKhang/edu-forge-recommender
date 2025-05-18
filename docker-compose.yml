@@ -7,6 +7,8 @@ services:
       - EXTERNAL_API_URL=http://eduforge-post-app:8080
     ports:
       - "8090:8000"
+    volumes:
+      - recommender_data:/app/data
     networks:
       - eduforge-network
     restart: always
@@ -17,4 +19,5 @@ networks:
     name: eduforge-network
 
 volumes:
-  mongodb_data: 
+  mongodb_data:
+  recommender_data: 

@@ -2,7 +2,10 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies và sqlite3
+RUN apt-get update && apt-get install -y sqlite3 && apt-get clean
+
+# Install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
