@@ -12,5 +12,8 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run server với đường dẫn tuyệt đối
-CMD ["python", "/app/manage.py", "runserver", "0.0.0.0:8000"] 
+# Make start script executable
+RUN chmod +x /app/start.sh
+
+# Run server
+CMD ["/app/start.sh"] 
