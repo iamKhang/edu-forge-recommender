@@ -9,6 +9,7 @@ services:
       - "8090:8000"
     volumes:
       - recommender_data:/app/data
+      - ./db.sqlite3:/app/db.sqlite3
     networks:
       - eduforge-network
     restart: always
@@ -19,5 +20,4 @@ networks:
     name: eduforge-network
 
 volumes:
-  mongodb_data:
   recommender_data: 
