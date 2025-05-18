@@ -31,6 +31,6 @@ python /app/manage.py migrate
 echo "Verifying tables..."
 sqlite3 /app/db.sqlite3 "SELECT name FROM sqlite_master WHERE type='table';"
 
-# Khởi động server
-echo "Starting server..."
-python /app/manage.py runserver 0.0.0.0:8000 
+# Khởi động server với Gunicorn thay vì development server
+echo "Starting server with Gunicorn..."
+gunicorn edu_forge_recommender.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 
