@@ -24,7 +24,7 @@ RUN mkdir -p /app/static
 RUN python manage.py collectstatic --noinput || echo "No static files to collect"
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8090
 
 # Run server with increased timeout and worker settings
-CMD ["gunicorn", "edu_forge_recommender.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "1200", "--keep-alive", "65", "--log-level", "debug"]
+CMD ["gunicorn", "edu_forge_recommender.wsgi:application", "--bind", "0.0.0.0:8090", "--workers", "2", "--threads", "4", "--timeout", "1200", "--keep-alive", "65", "--log-level", "debug"]
