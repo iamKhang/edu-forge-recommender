@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
+    curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -16,8 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
-# Create model directory with proper permissions
-RUN mkdir -p /app/recommender/model && chmod -R 777 /app/recommender/model
+# No need for model directory anymore as we're not persisting models
 
 # Create static files directory
 RUN mkdir -p /app/static

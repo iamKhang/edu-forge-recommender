@@ -23,9 +23,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Get the external API URL from environment variable, default to localhost if not set
-EXTERNAL_API_URL = os.getenv('EXTERNAL_API_URL', 'http://localhost:8080')
-TRAINING_DATA_ENDPOINT = f"{EXTERNAL_API_URL}/api/posts/training-data/all"
+# Use the production API URL for training data
+TRAINING_DATA_ENDPOINT = "https://posts.eduforge.io.vn/api/posts/training-data/all"
 
 # Configuration constants
 MAX_RECORDS_FOR_TESTING = 1000  # Limit data size for testing
@@ -34,17 +33,17 @@ API_REQUEST_TIMEOUT = 30  # 30 seconds timeout for API requests
 
 # Create your views here.
 
-class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all()
-    serializer_class = PostSerializer
+class PostViewSet(viewsets.ViewSet):
+    def list(self, request):
+        return Response({"message": "Posts API is not available in memory-only mode"})
 
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
+class UserViewSet(viewsets.ViewSet):
+    def list(self, request):
+        return Response({"message": "Users API is not available in memory-only mode"})
 
-class UserPostInteractionViewSet(viewsets.ModelViewSet):
-    queryset = UserPostInteraction.objects.all()
-    serializer_class = UserPostInteractionSerializer
+class UserPostInteractionViewSet(viewsets.ViewSet):
+    def list(self, request):
+        return Response({"message": "Interactions API is not available in memory-only mode"})
 
     @action(detail=False, methods=['get', 'post'])
     def train_and_recommend(self, request):

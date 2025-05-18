@@ -76,10 +76,10 @@ WSGI_APPLICATION = 'edu_forge_recommender.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# We don't need a database anymore
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',  # Use in-memory database
+        'ENGINE': 'django.db.backends.dummy',
     }
 }
 

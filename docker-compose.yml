@@ -6,7 +6,6 @@ services:
     ports:
       - "8090:8000"
     environment:
-      - EXTERNAL_API_URL=http://eduforge-post-app:8080
       - PYTHONUNBUFFERED=1
       - DEBUG=True
     networks:
@@ -26,13 +25,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    volumes:
-      - recommender_data:/app/recommender/model
-
 networks:
   eduforge-network:
     external: true
     name: eduforge-network
-
-volumes:
-  recommender_data:

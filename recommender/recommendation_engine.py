@@ -7,7 +7,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 import requests
 from datetime import datetime
 import os
-import pickle
 import json
 import logging
 import time
@@ -33,119 +32,8 @@ class RecommendationEngine:
         self.user_embeddings = {}
         self.post_embeddings = {}
         self.content_embeddings = {}
-        self.model_path = 'recommender/model/recommendation_model.keras'
-        self.embeddings_path = 'recommender/model/embeddings.json'
 
-        # Create model directory if it doesn't exist
-        os.makedirs('recommender/model', exist_ok=True)
-
-        # Load model and embeddings if they exist
-        self._load_model()
-        self._load_embeddings()
-
-    def _load_model(self):
-        """Load the trained model if it exists"""
-        if os.path.exists(self.model_path):
-            try:
-                self.model = tf.keras.models.load_model(self.model_path)
-                print("Model loaded successfully")
-            except Exception as e:
-                print(f"Error loading model: {e}")
-                self.model = None
-
-    def _load_embeddings(self):
-        """Load the embeddings if they exist"""
-        if os.path.exists(self.embeddings_path):
-            try:
-                with open(self.embeddings_path, 'r') as f:
-                    data = json.load(f)
-                    self.user_embeddings = data.get('user_embeddings', {})
-                    self.post_embeddings = data.get('post_embeddings', {})
-                print("Embeddings loaded successfully")
-            except Exception as e:
-                print(f"Error loading embeddings: {e}")
-                self.user_embeddings = {}
-                self.post_embeddings = {}
-
-    def save_model(self):
-        """Save the trained model and embeddings"""
-        try:
-            # Convert dictionary embeddings to serializable format
-            model_data = {
-                'user_embeddings': {
-                    str(k): v.tolist() if isinstance(v, np.ndarray) else v
-                    for k, v in self.user_embeddings.items()
-                } if hasattr(self, 'user_embeddings') else {},
-                'post_embeddings': {
-                    str(k): v.tolist() if isinstance(v, np.ndarray) else v
-                    for k, v in self.post_embeddings.items()
-                } if hasattr(self, 'post_embeddings') else {},
-                'content_embeddings': {
-                    str(k): v.tolist() if isinstance(v, np.ndarray) else v
-                    for k, v in self.content_embeddings.items()
-                } if hasattr(self, 'content_embeddings') else {},
-                'user_mapping': self.user_mapping if hasattr(self, 'user_mapping') else {},
-                'item_mapping': self.item_mapping if hasattr(self, 'item_mapping') else {},
-                'reverse_user_mapping': {str(k): v for k, v in self.reverse_user_mapping.items()} if hasattr(self, 'reverse_user_mapping') else {},
-                'reverse_item_mapping': {str(k): v for k, v in self.reverse_item_mapping.items()} if hasattr(self, 'reverse_item_mapping') else {},
-                'n_factors': getattr(self, 'n_factors', 32),
-                'learning_rate': getattr(self, 'learning_rate', 0.001),
-                'n_epochs': getattr(self, 'n_epochs', 10),
-                'reg': getattr(self, 'reg', 0.01),
-                'last_trained': datetime.now().isoformat()
-            }
-
-            with open(self.model_path, 'w') as f:
-                json.dump(model_data, f)
-
-            logger.info(f"Model saved successfully to {self.model_path}")
-
-        except Exception as e:
-            logger.error(f"Error saving model: {str(e)}")
-            raise
-
-    def load_model(self):
-        """Load the trained model and embeddings"""
-        try:
-            if os.path.exists(self.model_path):
-                with open(self.model_path, 'r') as f:
-                    model_data = json.load(f)
-
-                # Convert dictionary embeddings back to numpy arrays
-                self.user_embeddings = {
-                    int(k): np.array(v) if isinstance(v, list) else v
-                    for k, v in model_data.get('user_embeddings', {}).items()
-                }
-                self.post_embeddings = {
-                    int(k): np.array(v) if isinstance(v, list) else v
-                    for k, v in model_data.get('post_embeddings', {}).items()
-                }
-                self.content_embeddings = {
-                    int(k): np.array(v) if isinstance(v, list) else v
-                    for k, v in model_data.get('content_embeddings', {}).items()
-                }
-
-                # Load mappings and parameters
-                self.user_mapping = model_data.get('user_mapping', {})
-                self.item_mapping = model_data.get('item_mapping', {})
-                self.reverse_user_mapping = {
-                    int(k): v for k, v in model_data.get('reverse_user_mapping', {}).items()
-                }
-                self.reverse_item_mapping = {
-                    int(k): v for k, v in model_data.get('reverse_item_mapping', {}).items()
-                }
-                self.n_factors = model_data.get('n_factors', 32)
-                self.learning_rate = model_data.get('learning_rate', 0.001)
-                self.n_epochs = model_data.get('n_epochs', 10)
-                self.reg = model_data.get('reg', 0.01)
-
-                logger.info(f"Model loaded successfully from {self.model_path}")
-                return True
-            return False
-
-        except Exception as e:
-            logger.error(f"Error loading model: {str(e)}")
-            return False
+    # Removed save_model and load_model methods as we don't need to persist the model anymore
 
     def fetch_training_data(self, max_records=None):
         """Fetch training data from API
@@ -538,12 +426,8 @@ class RecommendationEngine:
             embedding_time = time.time() - embedding_start_time
             logger.info(f"Embedding extraction completed in {embedding_time:.2f} seconds")
 
-            # Save the trained model and embeddings
-            logger.info("Step 8: Saving model and embeddings...")
-            save_start_time = time.time()
-            self.save_model()
-            save_time = time.time() - save_start_time
-            logger.info(f"Model saving completed in {save_time:.2f} seconds")
+            # No need to save the model anymore
+            logger.info("Step 8: Model training completed, no persistence needed")
 
             total_time = time.time() - total_start_time
             logger.info(f"Total training process completed in {total_time:.2f} seconds")
