@@ -3,28 +3,13 @@ services:
   recommender:
     build: .
     container_name: eduforge-recommender
+    ports:
+      - "8090:8000"
     environment:
       - EXTERNAL_API_URL=http://eduforge-post-app:8080
       - PYTHONUNBUFFERED=1
-    volumes:
-      - recommender_data:/app/data
-      - ./db.sqlite3:/app/data/db.sqlite3
     networks:
       - eduforge-network
-    restart: always
-    
-  # Nginx Service for handling timeouts and proxy
-  nginx:
-    image: nginx:latest
-    container_name: eduforge-recommender-nginx
-    ports:
-      - "8090:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-    networks:
-      - eduforge-network
-    depends_on:
-      - recommender
     restart: always
 
 networks:

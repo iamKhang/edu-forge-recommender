@@ -79,10 +79,7 @@ WSGI_APPLICATION = 'edu_forge_recommender.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'data', 'db.sqlite3') if os.path.exists(os.path.join(BASE_DIR, 'data')) else os.path.join(BASE_DIR, 'db.sqlite3'),
-        'OPTIONS': {
-            'timeout': 60,  # Longer timeout for database operations
-        },
+        'NAME': ':memory:',  # Use in-memory database
     }
 }
 
