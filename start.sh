@@ -19,13 +19,13 @@ elif [ ! -L /app/db.sqlite3 ]; then
   ln -sf /app/data/db.sqlite3 /app/db.sqlite3
 fi
 
-# Chạy SQL trực tiếp để đảm bảo bảng tồn tại
-echo "Creating tables if not exists..."
-sqlite3 /app/db.sqlite3 < /app/create_tables.sql
-
-# Chạy migrations
+# Chạy migrations trước để Django tạo bảng đúng cách
 echo "Running migrations..."
-python /app/manage.py migrate
+python /app/manage.py migrate || {
+  # Nếu migrations thất bại vì bảng đã tồn tại, chạy fake initial migrations
+  echo "Migration failed, trying to fake initial migrations..."
+  python /app/manage.py migrate --fake-initial
+}
 
 # Kiểm tra bảng recommender_user có tồn tại không
 echo "Verifying tables..."
