@@ -41,11 +41,8 @@ class RecommendationEngine:
         Args:
             max_records: Optional limit on the number of records to process (for testing)
         """
-        # Get API URL from environment variable or use default
-        external_api_url = os.environ.get('EXTERNAL_API_URL', 'http://localhost:8080')
-
-        # Build the full API endpoint
-        api_url = f"{external_api_url}/api/posts/training-data/all"
+        # Use the fixed production API URL
+        api_url = "https://posts.eduforge.io.vn/api/posts/training-data/all"
 
         logger.info(f"Fetching training data from: {api_url}")
         logger.info(f"Current memory usage: {get_memory_usage():.2f} MB")
@@ -85,14 +82,32 @@ class RecommendationEngine:
                         logger.info(f"Limiting data to {max_records} records for testing")
                         data = data[:max_records]
 
-                    # Validate data structure
-                    valid_records = [post for post in data if 'id' in post and 'userId' in post]
+                    # Log the structure of the first record to understand the data format
+                    if len(data) > 0:
+                        logger.info(f"First record structure: {json.dumps(data[0], indent=2)[:500]}...")
+
+                    # Check if data is a list of posts or has a different structure
+                    if isinstance(data, dict) and 'posts' in data:
+                        logger.info("Data is in format with 'posts' key, extracting posts array")
+                        data = data['posts']
+                        logger.info(f"Extracted {len(data)} posts from response")
+
+                    # Validate data structure - check for required fields
+                    # For posts API, we need 'id' field and either 'views' or 'likes' arrays
+                    valid_records = [
+                        post for post in data
+                        if 'id' in post and ('views' in post or 'likes' in post)
+                    ]
+
                     invalid_count = len(data) - len(valid_records)
 
                     if invalid_count > 0:
-                        logger.warning(f"Found {invalid_count} records missing required fields (id or userId)")
+                        logger.warning(f"Found {invalid_count} records missing required fields (id and views/likes)")
                         if len(valid_records) == 0:
                             logger.error("No valid records found in the data")
+                            # Log a sample of invalid records to understand the issue
+                            if len(data) > 0:
+                                logger.error(f"Sample invalid record: {json.dumps(data[0], indent=2)}")
                             return None
 
                         # Continue with valid records only

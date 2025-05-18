@@ -179,8 +179,8 @@ class UserPostInteractionViewSet(viewsets.ViewSet):
             stats = {
                 'num_users': len(engine.user_embeddings) if hasattr(engine, 'user_embeddings') else 0,
                 'num_posts': len(engine.post_embeddings) if hasattr(engine, 'post_embeddings') else 0,
-                'model_saved': os.path.exists(engine.model_path) if hasattr(engine, 'model_path') else False,
-                'embeddings_saved': os.path.exists(engine.embeddings_path) if hasattr(engine, 'embeddings_path') else False,
+                'model_saved': False,  # We don't save models anymore
+                'embeddings_saved': False,  # We don't save embeddings anymore
                 'training_time': f"{training_time:.2f} seconds",
                 'recommendation_time': f"{recommendation_time:.2f} seconds",
                 'memory_usage': f"{get_memory_usage():.2f} MB",
