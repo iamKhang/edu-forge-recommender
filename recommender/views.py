@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Use the production API URL for training data
-TRAINING_DATA_ENDPOINT = "https://posts.eduforge.io.vn/api/posts/training-data/all"
+TRAINING_DATA_ENDPOINT = "http://eduforge.io.vn:8081/api/posts/training-data/all"
 
 # Configuration constants
 MAX_RECORDS_FOR_TESTING = 1000  # Limit data size for testing
