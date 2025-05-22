@@ -42,7 +42,7 @@ class RecommendationEngine:
             max_records: Optional limit on the number of records to process (for testing)
         """
         # Use the fixed production API URL
-        api_url = "http://eduforge.io.vn:8081/api/posts/training-data/all"
+        api_url = "http://eduforge.io.vn:8081/api/v1/posts/training-data/all"
 
         logger.info(f"Fetching training data from: {api_url}")
         logger.info(f"Current memory usage: {get_memory_usage():.2f} MB")
